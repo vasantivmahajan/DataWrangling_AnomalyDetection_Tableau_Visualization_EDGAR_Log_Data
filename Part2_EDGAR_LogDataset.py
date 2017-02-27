@@ -1,115 +1,249 @@
 
 # coding: utf-8
 
+# In[1]:
+
+from bs4 import BeautifulSoup
+import requests
+import pandas as pd
+import numpy as np
+import urllib.request as ur
+import os.path
+import zipfile
+
+
+# In[2]:
+
+def fetch_company_name_cik_table():
+    CIKs = []
+    companyNames = []
+    path = '.'
+    files = ['cik-list.txt']
+    for f in files:
+
+          with open (f, "r") as myfile:
+            for line in myfile:
+                #print(line)
+                values=line.split(':')
+                companyNames.append(values[len(values)-3])
+                CIKs.append(values[(len(values)-2)].strip('0'))
+    df = pd.DataFrame({'CIK': CIKs, 'company': companyNames})
+    df.to_csv('CIK-mapping.csv')
+    return df
+
+
+# In[3]:
+
+#!/usr/bin/env python       
+
+class GetData:
+    
+    def __init__(self):
+        """
+        Retrieves and stores the urllib.urlopen object for a given url
+        """
+        
+    def generate_url(self,year):
+        
+        #generate the url for fetching the log files for every month's first day
+        number_of_months=1
+        while number_of_months < 13:
+            if(number_of_months <10):
+                url="http://www.sec.gov/dera/data/PublicEDGAR-log-file-data/"+year+"/Qtr1/log"+year+'%02d' % number_of_months+"01.zip"
+            else:
+                url="http://www.sec.gov/dera/data/PublicEDGAR-log-file-data/"+year+"/Qtr1/log"+year+str(number_of_months)+"01.zip"
+            number_of_months=number_of_months+1
+        #temp_url=download_data("http://www.sec.gov/dera/data/Public-EDGAR-log-file-data/2016/Qtr1/log20160101.zip")
+        return self.download_data("http://www.sec.gov/dera/data/Public-EDGAR-log-file-data/2003/Qtr1/log20030301.zip")
+        
+    def download_data(self,url):
+
+        #fetching the zip file name from the URL
+        file_name=url.split("/")
+
+        #Downloading data if not already present in the cache
+        if(os.path.exists("Part_2_log_datasets/"+file_name[8])):
+            print("Already present")
+
+        else:
+            urllib.request.urlretrieve(url, "Part_2_log_datasets/"+file_name[8])
+            print("Download complete")
+
+        #unzip the file and fetch the csv file
+        zf = zipfile.ZipFile("Part_2_log_datasets/"+file_name[8]) 
+        csv_file_name=file_name[8].replace("zip", "csv")
+        zf_file=zf.open(csv_file_name)
+
+        #create a dataframe from the csv
+        df = pd.read_csv(zf_file)
+        return df
+        
+#fetch the year for which the user wants logs
+year = input('Enter the year for which you need to fetch the log files: ')
+#calling the function to generate dynamic URL
+get_data_obj=GetData()
+df=get_data_obj.generate_url(year)
+        
+
+
+# In[13]:
+
+#convert all the integer column in int format
+
+df['zone'] = df['zone'].astype('int')
+df['cik'] = df['cik'].astype('int')
+df['code'] = df['code'].astype('int')
+df['idx']=df['idx'].astype('int')
+df['norefer']=df['norefer'].astype('int')
+df['noagent']=df['noagent'].astype('int')
+df['find']=df['find'].astype('int')
+df['crawler']=df['crawler'].astype('int')
+print(df.head(25))
+
+
+# In[14]:
+
+
+#replacing empty strings with NaN 
+df.replace(r'\s+', np.nan, regex=True)
+
+
+# In[17]:
+
+
+#replace all ip column NaN value by a default ip address 
+df["ip"].fillna("255.255.255.255", inplace=True)
+
+#perform forward fill to replace NaN values by fetching the next valid value
+df["date"].fillna(method='ffill')
+
+#perform backward fill to replace NaN values by backpropagating and fetching the previous valid value
+df["time"].fillna(method='bfill')
+
+#
+#df["zone"].fillna(?????)
+
+#replace all extension column NaN values by default extension
+df["extention"].fillna("-index.htm", inplace=True)
+
+#replace all size column NaN values by 0 and convert the column into integer 
+df["size"].fillna(0, inplace=True)
+df['size'] = df['size'].astype('int')
+
+#replace all user agent column NaN values by the default value 1 (no user agent)
+df["noagent"].fillna("Not Applicable", inplace=True)
+
+#replace all find column NaN values by the default value 0 (no character strings found)
+df["find"].fillna(0, inplace=True)
+
+#replace all broser column NaN values by a string
+df["browser"].fillna("Not Available", inplace=True)
+
+
+# In[22]:
+
+# if the value in idx column is missing, check the value of the extension column, if its "-index.html" set the column's value 1 else 0
+count=0
+for i in df['idx']:
+    if(np.isnan(i)):
+        if(df['extension'][count]=="-index.htm"):
+            i=1
+        else:
+            i=0
+    count=count+1
+
+# if the value of norefer column is missing, check the value of the find column, if it is 0, set the value 1, else it set it 0
+counter=0
+for i in df['norefer']:
+    if(np.isnan(i)):
+        if(df["find"][counter]==0):
+            i=1
+        else:
+            i=0
+    counter=counter+1
+    
+# if the value of crawler is missing, check the value of the code, if it is 404 set it as 1 else 0
+count_position=0
+for i in df['crawler']:
+    if(np.isnan(i)):
+        if(df["code"][count_position]==404):
+            i=1
+        else:
+            i=0
+    count_position=count_position+1
+
+
+# In[25]:
+
+#insert a column to check CIK, Accession number discripancy
+df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
+
+
+# In[26]:
+
+
+#check if CIK and Accession number match. The Accession number is divided into three parts, CIK-Year-Number_of_filings_listed.
+#the first part i.e the CIK must match with the CIK column. If not, there exists an anomaly
+
+count=0;
+print("I am working")
+for i in df['accession']:
+    #fetch the CIK number from the accession number and convert it into integer
+    list_of_fetched_cik_from_accession=[(int(i.split("-")[0]))]
+    
+    #check if the CIK number from the column and CIK number fetched from the accession number are equal
+    if(df['cik'][count]!=list_of_fetched_cik_from_accession):
+        df['CIK_Accession_Anamoly_Flag'][count]="Y"
+        
+    count=count+1
+print("Done")
+print(df.head(10))
+
+
+# In[9]:
+
+#fetch the CIK_CompanyName concatenated dataframe
+cik_companyname_dataframe=fetch_company_name_cik_table()
+cik_companyname_dataframe = cik_companyname_dataframe.rename(columns={'CIK': 'cik'})
+print(cik_companyname_dataframe.head(5))
+
+
 # In[10]:
 
-#!/usr/bin/env python
-def generate_url(year):
-    
-    #generate the url for fetching the log files for every month's first day
-    number_of_months=1
-    while number_of_months < 13:
-        if(number_of_months <10):
-            url="http://www.sec.gov/dera/data/PublicEDGAR-log-file-data/"+year+"/Qtr1/log"+year+'%02d' % number_of_months+"01.zip"
-        else:
-            url="http://www.sec.gov/dera/data/PublicEDGAR-log-file-data/"+year+"/Qtr1/log"+year+str(number_of_months)+"01.zip"
-        number_of_months=number_of_months+1
-    #temp_url=download_data("http://www.sec.gov/dera/data/Public-EDGAR-log-file-data/2016/Qtr1/log20160101.zip")
-    maybe_download("http://www.sec.gov/dera/data/Public-EDGAR-log-file-data/2016/Qtr1/log20160101.zip")
-    
-def maybe_download(url):
-    
-    import urllib.request
-    import requests
-    import os.path
-    import zipfile
-    import pandas as pd
-   
-    #fetching the zip file name from the URL
-    file_name=url.split("/")
-    
-    #Downloading data if not already present in the cache
-    if(os.path.exists("Part_2_log_datasets/"+file_name[8])):
-        print("Already present")
-        
+#merge both the dataframe using the CIK as common column
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< facing a problem, both the cik's are different>>>>>>>>>>>>>>>>>>>>>>
+print(cik_companyname_dataframe.sort(['cik'], ascending=[False]).head(50))
+print(df.sort(['cik'], ascending=[False]).head(50))
+
+#merged_df=df.merge(cik_companyname_dataframe, on='cik', how='left')
+#print(merged_df.head(25))
+#print(merged_df.loc[merged_df['cik']==1438823])
+
+
+
+# In[11]:
+
+print(df.head(10))
+
+
+# In[28]:
+
+df.insert(7, "filename", "")
+
+
+# In[ ]:
+
+#Extension rule: if the file name is missing and only the file extension is present, then the file name is document accession number
+count=0
+for i in df["extention"]:
+    if(i==".txt"):
+        # if the value in extension is only .txt, fetch the accession number and append accession number to .txt
+        #list_of_fetched_cik_from_accession=int(((df2["accession"].str.split("-")[count])[0]))
+        #print((df["accession"]).astype(str))
+        #list_of_fetched_cik_from_accession=int(df["accession"])
+        df["filename"][count]=(df["accession"]).astype(str)+".txt"
     else:
-        urllib.request.urlretrieve(url, "Part_2_log_datasets/"+file_name[8])
-        print("Download complete")
-        
-    #unzip the file and fetch the csv file
-    zf = zipfile.ZipFile("Part_2_log_datasets/"+file_name[8]) 
-    csv_file_name=file_name[8].replace("zip", "csv")
-    zf_file=zf.open(csv_file_name)
-    
-    #create a dataframe from the csv
-    df = pd.read_csv(zf_file)
-  
-    
-def trial_download(url):
-    import zipfile
-    from zipfile import ZipFile
-    import urllib.request
-    import csv
-    import pandas as pd
-    url = urllib.request.urlopen(url)
-    with ZipFile(BytesIO(url.read())) as my_zip_file:
-        pd.read
-        for contained_file in my_zip_file.namelist():
-            print("unzipping maybe")
-    
-def download_data(temp_url):
-    print("In download URL function")
-    import pandas as pd
-    import zipfile
-    zf = zipfile.ZipFile(temp_url)
-    zf_file=zf.open('log20030101.zip')
-    df = pd.read_csv(zf_file)
-    #df = pd.read_csv(url, compression='zip', header=0, sep=',', quotechar='"')
-    print(df.head(5))
-    #you need to install request package using $ pip install requests
-    """from io import BytesIO
-    from zipfile import ZipFile
-    import urllib.request
-    import csv
-    url = urllib.request.urlopen(url)
-       
-    with ZipFile(BytesIO(url.read())) as my_zip_file:
-        for contained_file in my_zip_file.namelist():
-            print("unzipping maybe")
-            uncompress_size = sum((file.file_size for file in my_zip_file.infolist()))
-
-            extracted_size = 0
-
-            for file in my_zip_file.infolist():
-                extracted_size += file.file_size
-                print (extracted_size * 100/uncompress_size)
-                my_zip_file.extract(file)
-                
-            # with open(("unzipped_and_read_" + contained_file + ".file"), "wb") as output:
-            
-            for line in my_zip_file.open(contained_file).readlines():
-                print("reading line one by one started")
-                line=[line]
-                with open('test.csv', 'w', newline='') as fp:
-                    a = csv.writer(fp, delimiter=',')
-                    a.writerows(line)
-            print("Done")"""
-
-    
-if __name__ == '__main__':
-    
-    #fetch the year for which the user wants logs
-    year = input('Enter the year for which you need to fetch the log files: ')
-    #calling the function to generate dynamic URL
-    generate_url(year)
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
+        df["filename"][count]=i
+    count=count+1
+print(df.head(10))
 
