@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[3]:
+# In[7]:
 
 ###from bs4 import BeautifulSoup
 import requests
@@ -12,6 +12,27 @@ import urllib as ur
 
 import os.path
 import zipfile
+import tinys3
+
+
+# In[8]:
+
+import configparser
+Config = configparser.ConfigParser()
+Config.read('config.ini')
+Config.sections()
+def ConfigSectionMap(section):
+    dict1 = {}
+    options = Config.options(section)
+    for option in options:
+        try:
+            dict1[option] = Config.get(section, option)
+            if dict1[option] == -1:
+                DebugPrint("skip: %s" % option)
+        except:
+            print("exception on %s!" % option)
+            dict1[option] = None
+    return dict1
 
 
 # In[ ]:
@@ -34,7 +55,7 @@ def fetch_company_name_cik_table():
     ###return df
 
 
-# In[ ]:
+# In[10]:
 
 #!/usr/bin/env python       
 
@@ -80,6 +101,7 @@ class GetData:
 
         #create a dataframe from the csv
         df = pd.read_csv(zf_file)
+        
         return df
     
     def create_directory(self,path):
@@ -88,7 +110,29 @@ class GetData:
                 os.makedirs(path)
         except OSError as exception:
             if exception.errno != errno.EEXIST:
-                raise    
+                raise
+                
+    def create_zip_folder(self,path):
+        zipfolder_name=path+'.zip'
+        zf = zipfile.ZipFile(zipfolder_name, "w")
+        for dirname, subdirs, files in os.walk(path):
+            zf.write(dirname)
+            for filename in files:
+                zf.write(os.path.join(dirname, filename))
+        zf.close()
+    
+    def upload_zip_to_s3(self,path):
+        S3_ACCESS_KEY = ConfigSectionMap("Part_1")['s3_access_key']#'AKIAICSMTFLAR54DYMQQ'
+        S3_SECRET_KEY = ConfigSectionMap("Part_1")['s3_secret_key']#'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'
+        BUCKET_NAME = ConfigSectionMap("Part_1")['s3_bucket']
+        #host = ConfigSectionMap("Part_1")['HOST']
+        # host='edgardatasets.s3-website-us-west-2.amazonaws.com'
+        # Creating a simple connection
+        conn = tinys3.Connection(S3_ACCESS_KEY,S3_SECRET_KEY)
+
+        # Uploading a single file
+        f = open("Part_2_log_datasets.zip",'rb')
+        conn.upload("Part_2_log_datasets.zip",f,BUCKET_NAME)             
         
 #fetch the year for which the user wants logs
 year = input('Enter the year for which you need to fetch the log files: ')
@@ -96,6 +140,8 @@ year = input('Enter the year for which you need to fetch the log files: ')
 get_data_obj=GetData()
 df=get_data_obj.generate_url(year)
         
+get_data_obj.create_zip_folder("Part_2_log_datasets")
+get_data_obj.upload_zip_to_s3("Part_2_log_datasets.zip")
 
 
 # In[ ]:
@@ -110,7 +156,7 @@ df['norefer']=df['norefer'].astype('int')
 df['noagent']=df['noagent'].astype('int')
 df['find']=df['find'].astype('int')
 df['crawler']=df['crawler'].astype('int')
-print(df.head(25))
+#print(df.head(25))
 
 
 # In[ ]:
@@ -150,7 +196,7 @@ df["find"].fillna(0, inplace=True)
 
 #replace all broser column NaN values by a string
 df["browser"].fillna("Not Available", inplace=True)
-df
+#df
 
 
 # In[ ]:
@@ -199,7 +245,7 @@ df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
 #the first part i.e the CIK must match with the CIK column. If not, there exists an anomaly
 
 count=0;
-print("I am working")
+print("Creating CIK_Accession_Anomaly_Flag column")
 for i in df['accession']:
     #fetch the CIK number from the accession number and convert it into integer
     list_of_fetched_cik_from_accession=[(int(i.split("-")[0]))]
@@ -210,7 +256,7 @@ for i in df['accession']:
         
     count=count+1
 print("Done")
-print(df.head(10))
+#print(df.head(10))
 
 
 # In[ ]:
@@ -221,13 +267,13 @@ print(df.head(10))
 company_df = pd.read_csv('CIK-mapping.csv') 
 
 merged_df=pd.merge(company_df, df, left_on='CIK',right_on='cik' )
-merged_df.head()
+#merged_df.head()
 #merged_df.loc[merged_df['cik']==1438823]
 
 
 # In[ ]:
 
-print(df.head(10))
+#print(df.head(10))
 
 
 # In[ ]:
@@ -245,9 +291,19 @@ for i in df["extention"]:
         #list_of_fetched_cik_from_accession=int(((df2["accession"].str.split("-")[count])[0]))
         #print((df["accession"]).astype(str))
         #list_of_fetched_cik_from_accession=int(df["accession"])
-        df["filename"][count]=(df["accession"][count]).astype(str)+".txt"
+        df["filename"][count]=(df["accession"][count])+".txt" 
     else:
         df["filename"][count]=i
     count=count+1
-print(df.head(10))
+#print(df.head(10))
+
+
+# In[6]:
+
+ConfigSectionMap("Part_1")
+
+
+# In[ ]:
+
+
 
