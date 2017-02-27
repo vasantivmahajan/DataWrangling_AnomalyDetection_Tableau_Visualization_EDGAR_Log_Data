@@ -1,18 +1,20 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
-from bs4 import BeautifulSoup
+###from bs4 import BeautifulSoup
 import requests
 import pandas as pd
 import numpy as np
-import urllib.request as ur
+#import urllib3 as ur
+import urllib as ur
+
 import os.path
 import zipfile
 
 
-# In[2]:
+# In[ ]:
 
 def fetch_company_name_cik_table():
     CIKs = []
@@ -29,10 +31,10 @@ def fetch_company_name_cik_table():
                 CIKs.append(values[(len(values)-2)].strip('0'))
     df = pd.DataFrame({'CIK': CIKs, 'company': companyNames})
     df.to_csv('CIK-mapping.csv')
-    return df
+    ###return df
 
 
-# In[3]:
+# In[ ]:
 
 #!/usr/bin/env python       
 
@@ -60,13 +62,15 @@ class GetData:
 
         #fetching the zip file name from the URL
         file_name=url.split("/")
+        
+        self.create_directory("Part_2_log_datasets")
 
         #Downloading data if not already present in the cache
         if(os.path.exists("Part_2_log_datasets/"+file_name[8])):
             print("Already present")
 
         else:
-            urllib.request.urlretrieve(url, "Part_2_log_datasets/"+file_name[8])
+            ur.request.urlretrieve(url, "Part_2_log_datasets/"+file_name[8])
             print("Download complete")
 
         #unzip the file and fetch the csv file
@@ -77,6 +81,14 @@ class GetData:
         #create a dataframe from the csv
         df = pd.read_csv(zf_file)
         return df
+    
+    def create_directory(self,path):
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path)
+        except OSError as exception:
+            if exception.errno != errno.EEXIST:
+                raise    
         
 #fetch the year for which the user wants logs
 year = input('Enter the year for which you need to fetch the log files: ')
@@ -86,7 +98,7 @@ df=get_data_obj.generate_url(year)
         
 
 
-# In[13]:
+# In[ ]:
 
 #convert all the integer column in int format
 
@@ -101,14 +113,14 @@ df['crawler']=df['crawler'].astype('int')
 print(df.head(25))
 
 
-# In[14]:
+# In[ ]:
 
 
 #replacing empty strings with NaN 
 df.replace(r'\s+', np.nan, regex=True)
 
 
-# In[17]:
+# In[ ]:
 
 
 #replace all ip column NaN value by a default ip address 
@@ -120,8 +132,8 @@ df["date"].fillna(method='ffill')
 #perform backward fill to replace NaN values by backpropagating and fetching the previous valid value
 df["time"].fillna(method='bfill')
 
-#
-#df["zone"].fillna(?????)
+#replace all zone column NaN values by 'Not Available' extension
+df["zone"].fillna("Not Available", inplace=True)
 
 #replace all extension column NaN values by default extension
 df["extention"].fillna("-index.htm", inplace=True)
@@ -138,9 +150,10 @@ df["find"].fillna(0, inplace=True)
 
 #replace all broser column NaN values by a string
 df["browser"].fillna("Not Available", inplace=True)
+df
 
 
-# In[22]:
+# In[ ]:
 
 # if the value in idx column is missing, check the value of the extension column, if its "-index.html" set the column's value 1 else 0
 count=0
@@ -173,13 +186,13 @@ for i in df['crawler']:
     count_position=count_position+1
 
 
-# In[25]:
+# In[ ]:
 
 #insert a column to check CIK, Accession number discripancy
 df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
 
 
-# In[26]:
+# In[ ]:
 
 
 #check if CIK and Accession number match. The Accession number is divided into three parts, CIK-Year-Number_of_filings_listed.
@@ -200,33 +213,24 @@ print("Done")
 print(df.head(10))
 
 
-# In[9]:
+# In[ ]:
 
-#fetch the CIK_CompanyName concatenated dataframe
-cik_companyname_dataframe=fetch_company_name_cik_table()
-cik_companyname_dataframe = cik_companyname_dataframe.rename(columns={'CIK': 'cik'})
-print(cik_companyname_dataframe.head(5))
+#merge both the dataframe using the CIK,cik as common column
 
+# read csv from source
+company_df = pd.read_csv('CIK-mapping.csv') 
 
-# In[10]:
-
-#merge both the dataframe using the CIK as common column
-# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< facing a problem, both the cik's are different>>>>>>>>>>>>>>>>>>>>>>
-print(cik_companyname_dataframe.sort(['cik'], ascending=[False]).head(50))
-print(df.sort(['cik'], ascending=[False]).head(50))
-
-#merged_df=df.merge(cik_companyname_dataframe, on='cik', how='left')
-#print(merged_df.head(25))
-#print(merged_df.loc[merged_df['cik']==1438823])
+merged_df=pd.merge(company_df, df, left_on='CIK',right_on='cik' )
+merged_df.head()
+#merged_df.loc[merged_df['cik']==1438823]
 
 
-
-# In[11]:
+# In[ ]:
 
 print(df.head(10))
 
 
-# In[28]:
+# In[ ]:
 
 df.insert(7, "filename", "")
 
@@ -241,7 +245,7 @@ for i in df["extention"]:
         #list_of_fetched_cik_from_accession=int(((df2["accession"].str.split("-")[count])[0]))
         #print((df["accession"]).astype(str))
         #list_of_fetched_cik_from_accession=int(df["accession"])
-        df["filename"][count]=(df["accession"]).astype(str)+".txt"
+        df["filename"][count]=(df["accession"][count]).astype(str)+".txt"
     else:
         df["filename"][count]=i
     count=count+1
