@@ -6,13 +6,18 @@
 import requests
 import pandas as pd
 import numpy as np
-import urllib3 as ur
-import urllib as ur
+#import urllib3 as ur
+import urllib.request as ur
 import configparser
 import os.path
 import zipfile
 import tinys3
 import sys
+import logging
+
+import logging as log
+
+log.basicConfig(filename='Part_2_log_datasets_trial/EDGAR_LogFileDataset_LogFile.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 # In[2]:
@@ -34,11 +39,11 @@ def ConfigSectionMap(section):
     return dict1
 
 
-# In[4]:
+# In[3]:
 
 #!/usr/bin/env python       
 merged_dataframe=pd.DataFrame()
-df_list=[]
+df_list_global=list()
 class GetData:
    
     def __init__(self):
@@ -60,18 +65,21 @@ class GetData:
         return merged_dataframe
     
     def setDataFrameList(self, list_of_df):
-        print("I am in setter")
-        print(list_of_df)
-        df_list = list_of_df
+        
+        df_list_global = list_of_df
+      
         
     def getDataFrameList(self):
-        return df_list
+        return df_list_global
     
     def maybe_download(self, url_list, year):
-   
+        
         df_list=['df1','df2','df3','df4','df5','df6','df7','df8','df9','df10','df11','df12']
         year=str(year)
         count=0
+        print("Downloading data for all the months")
+        log.info("Downloading data for all the months")
+        
         for i in url_list:
 
             #fetching the zip file name from the URL
@@ -81,32 +89,43 @@ class GetData:
             #Downloading data if not already present in the cache
             if(os.path.exists("Part_2_log_datasets_trial/"+year+"/"+file_name[8])):
                 print("Data for ",file_name[8]," is already present, pulling it from cache")
+                
 
             else:
                 #pbar = ProgressBar(widgets=[Percentage(), Bar()])
                 ur.urlretrieve(i, "Part_2_log_datasets_trial/"+year+"/"+file_name[8])
-
                 #ur.urlretrieve(i, "Part_2_log_datasets_trial/"+year+"/"+file_name[8], reporthook)
                 print("Data for ",file_name[8],"not present in cache. Downloading data")
-
+                
+            
             #unzip the file and fetch the csv file
             zf = zipfile.ZipFile("Part_2_log_datasets_trial/"+year+"/"+file_name[8]) 
             csv_file_name=file_name[8].replace("zip", "csv")
             zf_file=zf.open(csv_file_name)
-
+            
+            
             #create a dataframe from the csv and append it to the list of dataframe
             df_list[count]=pd.read_csv(zf_file)
-            count=count+1  
+           
+            count=count+1 
+        
+        print("All the files are downloaded and unzipped")
+        log.info("All the files are downloaded and unzipped")
+        print("Creating a dataframe from the csv and appending it to the list of dataframe")
+        log.info("Creating a dataframe from the csv and appending it to the list of dataframe")
         
         self.setDataFrameList(df_list)
+        log.info("Merging the dataframe")
         #merging the data into one dataframe
         merged_dataframe=pd.concat([df_list[0],df_list[1],df_list[2],df_list[3],df_list[4],df_list[5],df_list[6],df_list[7],df_list[8],df_list[9],df_list[10],df_list[11]], ignore_index=True)
         self.setDataFrame(merged_dataframe)
-        print(self.getDataFrameList())
         return merged_dataframe
     
 
     def generate_url(self, year):
+        log.info('In generate URL method')
+        print("Generating the URL's for the year")
+        log.info("Generating the URL's for the year")
         url_list=list()
         #generate the url for fetching the log files for every month's first day
         number_of_months=1
@@ -127,16 +146,18 @@ class GetData:
 
             else:
                 url="http://www.sec.gov/dera/data/Public-EDGAR-log-file-data/"+str(year)+"/"+quarter+"/log"+str(year)+str(number_of_months)+"01.zip"
-
+            
+            
             url_list.append(url)
             number_of_months=number_of_months+1
 
         return self.maybe_download(url_list,year)
         
     def fetch_year(self):
-    
+        log.info('Start of program')
          #fetch the year for which the user wants logs
         year = input('Enter the year for which you need to fetch the log files: ')
+        
         year=int(year)
         if(year >= 2003 and year < 2016):
             #calling the function to generate dynamic URL
@@ -186,7 +207,8 @@ class Process_and_analyse_data():
     
     def format_dataframe_columns(self):
         #convert all the integer column in int format
-
+        log.info("Data fetched, started cleaning")
+        print("Data fetched, started cleaning")
         df['zone'] = df['zone'].astype('int')
         df['cik'] = df['cik'].astype('int')
         df['code'] = df['code'].astype('int')
@@ -198,7 +220,11 @@ class Process_and_analyse_data():
         
         #replacing empty strings with NaN 
         df.replace(r'\s+', np.nan, regex=True)
+        log.info("Formatted the columns of the dataframe")
+        print("Formatted the columns of the dataframe")
         self.handle_nan_values()
+        
+        
         
     def handle_nan_values(self):
         
@@ -230,6 +256,8 @@ class Process_and_analyse_data():
         #replace all broser column NaN values by a string
         df["browser"].fillna("Not Available", inplace=True)
         
+        
+        
         # if the value in idx column is missing, check the value of the extension column, if its "-index.html" set the column's value 1 else 0
         count=0
         for i in df['idx']:
@@ -259,7 +287,15 @@ class Process_and_analyse_data():
                 else:
                     i=0
             count_position=count_position+1
+        log.info("Replacing NaN values with appropriate replacement")
+        log.info("Handling missing values completed")
+        print("Handling missing values completed")
         
+        log.info("Exporting merged dataframe to local system")
+        print("Exporting merged dataframe to local system")
+        df.to_csv("Part_2_log_datasets_trial/merged_dataframe.csv")
+        log.info("Merged dataframe exported")
+        print("Merged dataframe exported")
         self.fetch_company_name_from_cik()
     
     def fetch_company_name_from_cik(self):
@@ -273,58 +309,56 @@ class Process_and_analyse_data():
         merged_df_cik_company_name=pd.merge(df, company_df, on='cik')
         #merged_df_cik_company_name=pd.merge(df,company_df, left_on='cik',right_on='CIK' )
         #print(merged_df_cik_company_name.head(10))
+        
         self.identify_cik_accession_number_anomaly()
         
         
     def identify_cik_accession_number_anomaly(self):
-        """df=pd.DataFrame()
-        print(df_list)
-        for i in df_list:
-            print(type(i))
-            if i.empty:
-                print("Data frame is empty")
-            else:
-                print("Really?")
-                df=df_list[i]
-                break;"""
-        #print(df.head(10))
-      
-     
-        """#insert a column to check CIK, Accession number discripancy
-        df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
+        #this operation requires a large amount of time for computaton, thus we are performing this on a subset of data
+        small_df=df.head(25)
+        #insert a column to check CIK, Accession number discripancy
+        small_df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
                 
         #check if CIK and Accession number match. The Accession number is divided into three parts, CIK-Year-Number_of_filings_listed.
         #the first part i.e the CIK must match with the CIK column. If not, there exists an anomaly
 
         count=0;
-        print("Creating CIK_Accession_Anomaly_Flag column")
-        for i in df['accession']:
+        print("Creating CIK_Accession_Anomaly_Flag column to check anomaly")
+        log.info("Creating CIK_Accession_Anomaly_Flag column to check anomaly")
+        
+        for i in small_df['accession']:
             #fetch the CIK number from the accession number and convert it into integer
             list_of_fetched_cik_from_accession=[(int(i.split("-")[0]))]
 
             #check if the CIK number from the column and CIK number fetched from the accession number are equal
-            if(df['cik'][count]!=list_of_fetched_cik_from_accession):
-                df['CIK_Accession_Anamoly_Flag'][count]="Y"
+            if(small_df['cik'][count]!=list_of_fetched_cik_from_accession):
+                small_df['CIK_Accession_Anamoly_Flag'][count]="Y"
 
             count=count+1
-        print("Done")
-        print(df.head(10)) """
+        log.info("CIK Accession Anomaly flag computed")
+        print("CIK Accession Anomaly flag computed")
+        self.get_file_name_from_extension()
         
     def get_file_name_from_extension():
-        df.insert(7, "filename", "")
+        #this operation requires a large amount of time for computaton, thus we are performing this on a subset of data
+        small_df=df.head(25)
+        small_df.insert(7, "filename", "")
+        print("Creating filename column")
+        log.info("Creating filename column")
         #Extension rule: if the file name is missing and only the file extension is present, then the file name is document accession number
         count=0
-        for i in df["extention"]:
+        for i in small_df["extention"]:
             if(i==".txt"):
                 # if the value in extension is only .txt, fetch the accession number and append accession number to .txt
                 #list_of_fetched_cik_from_accession=int(((df2["accession"].str.split("-")[count])[0]))
                 #print((df["accession"]).astype(str))
                 #list_of_fetched_cik_from_accession=int(df["accession"])
-                df["filename"][count]=(df["accession"][count])+".txt" 
+                small_df["filename"][count]=(small_df["accession"][count])+".txt" 
             else:
-                df["filename"][count]=i
+                small_df["filename"][count]=i
             count=count+1
-        
+        print("Filename column created")
+        log.info("Filename column created")
         
 get_data_obj=GetData()
 df=get_data_obj.getDataFrame()
@@ -332,7 +366,11 @@ df_list=get_data_obj.getDataFrameList()
 process_data_obj=Process_and_analyse_data()
 process_data_obj.format_dataframe_columns()
 
+log.info("Zipping the folder for loading in S3")
 get_data_obj.create_zip_folder("Part_2_log_datasets_trial")
 get_data_obj.upload_zip_to_s3("Part_2_log_datasets_trial.zip")
+log.info("Data zipped and loaded on S3")
 print("Data zipped and loaded on S3")
+log.info("Pipeline completed!!")
+log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
