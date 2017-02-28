@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[25]:
 
 import requests
 import pandas as pd
@@ -17,10 +17,9 @@ import logging
 
 import logging as log
 
-log.basicConfig(filename='Part_2_log_datasets_trial/EDGAR_LogFileDataset_LogFile.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
 
-# In[2]:
+# In[26]:
 
 Config = configparser.ConfigParser()
 Config.read('config.ini')
@@ -39,7 +38,7 @@ def ConfigSectionMap(section):
     return dict1
 
 
-# In[3]:
+# In[28]:
 
 #!/usr/bin/env python       
 merged_dataframe=pd.DataFrame()
@@ -84,7 +83,7 @@ class GetData:
 
             #fetching the zip file name from the URL
             file_name=i.split("/")
-            self.create_directory("Part_2_log_datasets_trial/"+year+"/")
+           
 
             #Downloading data if not already present in the cache
             if(os.path.exists("Part_2_log_datasets_trial/"+year+"/"+file_name[8])):
@@ -154,10 +153,14 @@ class GetData:
         return self.maybe_download(url_list,year)
         
     def fetch_year(self):
-        log.info('Start of program')
-         #fetch the year for which the user wants logs
         year = input('Enter the year for which you need to fetch the log files: ')
+        self.create_directory("Part_2_log_datasets_trial/"+year+"/")
+        log.basicConfig(filename='Part_2_log_datasets_trial/EDGAR_LogFileDataset_LogFile.log', level=logging.INFO, format='%(asctime)s %(message)s')
+
         
+        #fetch the year for which the user wants logs
+       
+        log.info('Start of program')
         year=int(year)
         if(year >= 2003 and year < 2016):
             #calling the function to generate dynamic URL
@@ -296,7 +299,9 @@ class Process_and_analyse_data():
         df.to_csv("Part_2_log_datasets_trial/merged_dataframe.csv")
         log.info("Merged dataframe exported")
         print("Merged dataframe exported")
-        self.fetch_company_name_from_cik()
+        
+        merged_dataframe
+        self.identify_cik_accession_number_anomaly()
     
     def fetch_company_name_from_cik(self):
         #we found a list of CIK their company names from a EDGAR's github repository. We are fetching this information to gain the information about company name
@@ -309,7 +314,7 @@ class Process_and_analyse_data():
         merged_df_cik_company_name=pd.merge(df, company_df, on='cik')
         #merged_df_cik_company_name=pd.merge(df,company_df, left_on='cik',right_on='CIK' )
         #print(merged_df_cik_company_name.head(10))
-        
+        merged_df_cik_company_name
         self.identify_cik_accession_number_anomaly()
         
         
@@ -337,9 +342,10 @@ class Process_and_analyse_data():
             count=count+1
         log.info("CIK Accession Anomaly flag computed")
         print("CIK Accession Anomaly flag computed")
+        small_df
         self.get_file_name_from_extension()
         
-    def get_file_name_from_extension():
+    def get_file_name_from_extension(self):
         #this operation requires a large amount of time for computaton, thus we are performing this on a subset of data
         small_df=df.head(25)
         small_df.insert(7, "filename", "")
@@ -358,6 +364,7 @@ class Process_and_analyse_data():
                 small_df["filename"][count]=i
             count=count+1
         print("Filename column created")
+        small_df
         log.info("Filename column created")
         
 get_data_obj=GetData()
@@ -373,4 +380,94 @@ log.info("Data zipped and loaded on S3")
 print("Data zipped and loaded on S3")
 log.info("Pipeline completed!!")
 log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+
+
+# In[29]:
+
+combined_df = pd.read_csv("Part_2_log_datasets_trial/merged_dataframe.csv") #  pass your 12 month combined csv here
+# group by cik and date and get count of ciks for a date   
+temp_df=combined_df.groupby(['cik','date'])['cik'].count()
+temp_df.head()
+
+
+# In[30]:
+
+# convert group by result into a frame
+
+grouped_frame = pd.DataFrame(temp_df.reset_index(name = "hit_count"))
+
+grouped_frame
+
+
+# In[31]:
+
+## Monitor change in hit count
+
+def get_percent_change(curr, prev):
+        change_in_perc = ((curr - prev)/prev ) * 100
+        return change_in_perc
+
+count = 0
+analysis_df = pd.DataFrame()
+frame_count = 0
+for row in grouped_frame['cik']:
+    current_cik = grouped_frame['cik'][count]
+    current_hit_count = grouped_frame['hit_count'][count]
+    current_date = grouped_frame['date'][count]
+    if(count >= 1):
+        if(current_cik == grouped_frame['cik'][count-1]):
+            change_in_count = current_hit_count - grouped_frame['hit_count'][count-1] 
+            change_in_perc = get_percent_change(current_hit_count,grouped_frame['hit_count'][count-1])
+            
+            if(change_in_perc >= 1000 ): ## decide on threshold
+                analysis_df.loc[frame_count, 'cik'] = current_cik
+                analysis_df.loc[frame_count, 'date'] = current_date
+                analysis_df.loc[frame_count, 'change in %'] = change_in_perc
+                frame_count += 1
+                #print(current_cik ," changed by",change_in_perc," % on ",current_date)
+                
+    count +=1
+    
+analysis_df
+
+
+# In[32]:
+
+
+# Load the data into a DataFrame
+data = pd.read_csv('Part_2_log_datasets_trial/merged_dataframe.csv') # pass your single month stuff here
+#grouping by IP
+byIp = data.groupby('ip')
+byIp
+
+
+# In[33]:
+
+byCIK = data.groupby('cik')
+byCIK['size'].max()
+
+
+# In[34]:
+
+#getting requests with  status code 404
+byIp404=data[data['code']==404]
+byIp404
+#Anamoly-request with 404 has a download size associated.
+
+
+# In[35]:
+
+byIp404=data[data['code']==404].groupby('ip')
+byIp404['size'].mean()
+
+
+# In[36]:
+
+#1. Simple describe function on data
+summary = data.describe()
+summary
+#Analysis: total number of requests on this day-  261289
+#Average request per day :215
+#Max file download size:5.259544e+07
+#Avergae File donwload size:	1.703470e+05
 
