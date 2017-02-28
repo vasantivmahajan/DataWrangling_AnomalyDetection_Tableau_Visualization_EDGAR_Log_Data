@@ -1,13 +1,12 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
-###from bs4 import BeautifulSoup
 import requests
 import pandas as pd
 import numpy as np
-#import urllib3 as ur
+import urllib3 as ur
 import urllib as ur
 import configparser
 import os.path
@@ -16,8 +15,7 @@ import tinys3
 import sys
 
 
-# In[ ]:
-
+# In[2]:
 
 Config = configparser.ConfigParser()
 Config.read('config.ini')
@@ -36,30 +34,11 @@ def ConfigSectionMap(section):
     return dict1
 
 
-# In[ ]:
-
-def fetch_company_name_cik_table():
-    CIKs = []
-    companyNames = []
-    path = '.'
-    files = ['cik-list.txt']
-    for f in files:
-
-          with open (f, "r") as myfile:
-            for line in myfile:
-                #print(line)
-                values=line.split(':')
-                companyNames.append(values[len(values)-3])
-                CIKs.append(values[(len(values)-2)].strip('0'))
-    df = pd.DataFrame({'CIK': CIKs, 'company': companyNames})
-    df.to_csv('CIK-mapping.csv')
-    ###return df
-
-
-# In[16]:
+# In[4]:
 
 #!/usr/bin/env python       
 merged_dataframe=pd.DataFrame()
+df_list=[]
 class GetData:
    
     def __init__(self):
@@ -80,9 +59,17 @@ class GetData:
     def getDataFrame(self):
         return merged_dataframe
     
+    def setDataFrameList(self, list_of_df):
+        print("I am in setter")
+        print(list_of_df)
+        df_list = list_of_df
+        
+    def getDataFrameList(self):
+        return df_list
+    
     def maybe_download(self, url_list, year):
    
-        list=['df1','df2','df3','df4','df5','df6','df7','df8','df9','df10','df11','df12']
+        df_list=['df1','df2','df3','df4','df5','df6','df7','df8','df9','df10','df11','df12']
         year=str(year)
         count=0
         for i in url_list:
@@ -97,9 +84,9 @@ class GetData:
 
             else:
                 #pbar = ProgressBar(widgets=[Percentage(), Bar()])
+                ur.urlretrieve(i, "Part_2_log_datasets_trial/"+year+"/"+file_name[8])
 
-
-                urllib.request.urlretrieve(i, "Part_2_log_datasets_trial/"+year+"/"+file_name[8], reporthook)
+                #ur.urlretrieve(i, "Part_2_log_datasets_trial/"+year+"/"+file_name[8], reporthook)
                 print("Data for ",file_name[8],"not present in cache. Downloading data")
 
             #unzip the file and fetch the csv file
@@ -108,11 +95,14 @@ class GetData:
             zf_file=zf.open(csv_file_name)
 
             #create a dataframe from the csv and append it to the list of dataframe
-            list[count]=pd.read_csv(zf_file)
+            df_list[count]=pd.read_csv(zf_file)
             count=count+1  
+        
+        self.setDataFrameList(df_list)
         #merging the data into one dataframe
-        merged_dataframe=pd.concat([list[0],list[1],list[2],list[3],list[4],list[5],list[6],list[7],list[8],list[9],list[10],list[11]], ignore_index=True)
+        merged_dataframe=pd.concat([df_list[0],df_list[1],df_list[2],df_list[3],df_list[4],df_list[5],df_list[6],df_list[7],df_list[8],df_list[9],df_list[10],df_list[11]], ignore_index=True)
         self.setDataFrame(merged_dataframe)
+        print(self.getDataFrameList())
         return merged_dataframe
     
 
@@ -175,8 +165,8 @@ class GetData:
         conn = tinys3.Connection(S3_ACCESS_KEY,S3_SECRET_KEY)
 
         # Uploading a single file
-        f = open("Part_2_log_datasets.zip",'rb')
-        conn.upload("Part_2_log_datasets.zip",f,BUCKET_NAME)  
+        f = open("Part_2_log_datasets_trial.zip",'rb')
+        conn.upload("Part_2_log_datasets_trial.zip",f,BUCKET_NAME)  
         
 get_data_obj=GetData()
 merged_dataframe=get_data_obj.fetch_year()
@@ -185,9 +175,7 @@ merged_dataframe=get_data_obj.fetch_year()
 #calling the function to generate dynamic URL
 
 #df=get_data_obj.generate_url(year)
-        
-#get_data_obj.create_zip_folder("Part_2_log_datasets")
-#get_data_obj.upload_zip_to_s3("Part_2_log_datasets.zip")
+
 
 class Process_and_analyse_data():
     
@@ -271,6 +259,7 @@ class Process_and_analyse_data():
                 else:
                     i=0
             count_position=count_position+1
+        
         self.fetch_company_name_from_cik()
     
     def fetch_company_name_from_cik(self):
@@ -278,15 +267,30 @@ class Process_and_analyse_data():
         company_df = pd.read_csv('CIK-mapping.csv') 
         #renaming column, so that both the dataframes can be merged on the common column
         company_df = company_df.rename(columns={'CIK': 'cik'})
-        company_df['cik'] = company_df['cik'].astype('int')
+        company_df['cik'] = company_df['cik'].astype(np.int64)
         #merging both the dataframes
-        merged_df_cik_company_name= df.join(company_df, on='cik', how='left', rsuffix="_review")
-        #merged_df_cik_company_name=pd.merge(df, company_df, on='cik', how='left')
+        #merged_df_cik_company_name= df.join(company_df, on='cik', how='left', rsuffix="_review")
+        merged_df_cik_company_name=pd.merge(df, company_df, on='cik')
         #merged_df_cik_company_name=pd.merge(df,company_df, left_on='cik',right_on='CIK' )
-        print(merged_df_cik_company_name.head(10))
+        #print(merged_df_cik_company_name.head(10))
+        self.identify_cik_accession_number_anomaly()
+        
         
     def identify_cik_accession_number_anomaly(self):
-        #insert a column to check CIK, Accession number discripancy
+        """df=pd.DataFrame()
+        print(df_list)
+        for i in df_list:
+            print(type(i))
+            if i.empty:
+                print("Data frame is empty")
+            else:
+                print("Really?")
+                df=df_list[i]
+                break;"""
+        #print(df.head(10))
+      
+     
+        """#insert a column to check CIK, Accession number discripancy
         df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
                 
         #check if CIK and Accession number match. The Accession number is divided into three parts, CIK-Year-Number_of_filings_listed.
@@ -304,7 +308,7 @@ class Process_and_analyse_data():
 
             count=count+1
         print("Done")
-        print(df.head(10))
+        print(df.head(10)) """
         
     def get_file_name_from_extension():
         df.insert(7, "filename", "")
@@ -324,82 +328,11 @@ class Process_and_analyse_data():
         
 get_data_obj=GetData()
 df=get_data_obj.getDataFrame()
+df_list=get_data_obj.getDataFrameList()
 process_data_obj=Process_and_analyse_data()
 process_data_obj.format_dataframe_columns()
 
-
-# In[ ]:
-
-#insert a column to check CIK, Accession number discripancy
-df.insert(6, "CIK_Accession_Anamoly_Flag", "N")
-
-
-# In[ ]:
-
-
-#check if CIK and Accession number match. The Accession number is divided into three parts, CIK-Year-Number_of_filings_listed.
-#the first part i.e the CIK must match with the CIK column. If not, there exists an anomaly
-
-count=0;
-print("Creating CIK_Accession_Anomaly_Flag column")
-for i in df['accession']:
-    #fetch the CIK number from the accession number and convert it into integer
-    list_of_fetched_cik_from_accession=[(int(i.split("-")[0]))]
-    
-    #check if the CIK number from the column and CIK number fetched from the accession number are equal
-    if(df['cik'][count]!=list_of_fetched_cik_from_accession):
-        df['CIK_Accession_Anamoly_Flag'][count]="Y"
-        
-    count=count+1
-print("Done")
-#print(df.head(10))
-
-
-# In[ ]:
-
-#merge both the dataframe using the CIK,cik as common column
-
-# read csv from source
-company_df = pd.read_csv('CIK-mapping.csv') 
-
-merged_df=pd.merge(company_df, df, left_on='CIK',right_on='cik' )
-#merged_df.head()
-#merged_df.loc[merged_df['cik']==1438823]
-
-
-# In[ ]:
-
-#print(df.head(10))
-
-
-# In[ ]:
-
-df.insert(7, "filename", "")
-
-
-# In[ ]:
-
-#Extension rule: if the file name is missing and only the file extension is present, then the file name is document accession number
-count=0
-for i in df["extention"]:
-    if(i==".txt"):
-        # if the value in extension is only .txt, fetch the accession number and append accession number to .txt
-        #list_of_fetched_cik_from_accession=int(((df2["accession"].str.split("-")[count])[0]))
-        #print((df["accession"]).astype(str))
-        #list_of_fetched_cik_from_accession=int(df["accession"])
-        df["filename"][count]=(df["accession"][count])+".txt" 
-    else:
-        df["filename"][count]=i
-    count=count+1
-#print(df.head(10))
-
-
-# In[ ]:
-
-ConfigSectionMap("Part_1")
-
-
-# In[ ]:
-
-
+get_data_obj.create_zip_folder("Part_2_log_datasets_trial")
+get_data_obj.upload_zip_to_s3("Part_2_log_datasets_trial.zip")
+print("Data zipped and loaded on S3")
 
