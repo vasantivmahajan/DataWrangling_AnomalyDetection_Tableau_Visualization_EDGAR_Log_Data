@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[25]:
+# In[1]:
 
 import requests
 import pandas as pd
@@ -19,7 +19,7 @@ import logging as log
 
 
 
-# In[26]:
+# In[2]:
 
 Config = configparser.ConfigParser()
 Config.read('config.ini')
@@ -38,7 +38,7 @@ def ConfigSectionMap(section):
     return dict1
 
 
-# In[28]:
+# In[5]:
 
 #!/usr/bin/env python       
 merged_dataframe=pd.DataFrame()
@@ -178,7 +178,7 @@ class GetData:
             for filename in files:
                 zf.write(os.path.join(dirname, filename))
         zf.close()
-    
+    """
     def upload_zip_to_s3(self,path):
         S3_ACCESS_KEY = ConfigSectionMap("Part_1")['s3_access_key']#'AKIAICSMTFLAR54DYMQQ'
         S3_SECRET_KEY = ConfigSectionMap("Part_1")['s3_secret_key']#'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'
@@ -190,7 +190,33 @@ class GetData:
 
         # Uploading a single file
         f = open("Part_2_log_datasets_trial.zip",'rb')
-        conn.upload("Part_2_log_datasets_trial.zip",f,BUCKET_NAME)  
+        conn.upload("Part_2_log_datasets_trial.zip",f,BUCKET_NAME) 
+    """     
+        
+        
+    def upload_zip_to_s3(self,filetoupload):
+        S3_ACCESS_KEY= input("Enter S3_ACCESS_KEY : ")
+        S3_SECRET_KEY =  input("Enter S3_SECRET_KEY : ")
+        
+#         S3_ACCESS_KEY = ConfigSectionMap("Part_1")['s3_access_key']#'AKIAICSMTFLAR54DYMQQ'
+#         S3_SECRET_KEY = ConfigSectionMap("Part_1")['s3_secret_key']#'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'
+#         try:
+        conn = tinys3.Connection(S3_ACCESS_KEY,S3_SECRET_KEY)
+        #bucket = conn.create_bucket('edgar-data-set')
+        bucket = input("Enter BUCKET_NAME : ")
+            # Uploading a single file
+        f = open(filetoupload,'rb')
+        print("this is f",f)
+        print("this is file to upload",filetoupload)
+        print("this is bucket",bucket)
+        conn.upload(filetoupload,f,bucket)
+        print("Upload to s3 successfull")
+           
+#         except Exception:
+#             print("INVALID keys, please try again")
+#             self.upload_zip_to_s3(filetoupload)
+        #host='edgardatasets.s3-website-us-west-2.amazonaws.com'
+        # Creating a simple connection      
         
 get_data_obj=GetData()
 merged_dataframe=get_data_obj.fetch_year()
@@ -382,7 +408,7 @@ log.info("Pipeline completed!!")
 log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
 
-# In[29]:
+# In[ ]:
 
 combined_df = pd.read_csv("Part_2_log_datasets_trial/merged_dataframe.csv") #  pass your 12 month combined csv here
 # group by cik and date and get count of ciks for a date   
@@ -390,7 +416,7 @@ temp_df=combined_df.groupby(['cik','date'])['cik'].count()
 temp_df.head()
 
 
-# In[30]:
+# In[ ]:
 
 # convert group by result into a frame
 
@@ -399,7 +425,7 @@ grouped_frame = pd.DataFrame(temp_df.reset_index(name = "hit_count"))
 grouped_frame
 
 
-# In[31]:
+# In[ ]:
 
 ## Monitor change in hit count
 
@@ -431,7 +457,7 @@ for row in grouped_frame['cik']:
 analysis_df
 
 
-# In[32]:
+# In[ ]:
 
 
 # Load the data into a DataFrame
@@ -441,13 +467,13 @@ byIp = data.groupby('ip')
 byIp
 
 
-# In[33]:
+# In[ ]:
 
 byCIK = data.groupby('cik')
 byCIK['size'].max()
 
 
-# In[34]:
+# In[ ]:
 
 #getting requests with  status code 404
 byIp404=data[data['code']==404]
@@ -455,13 +481,13 @@ byIp404
 #Anamoly-request with 404 has a download size associated.
 
 
-# In[35]:
+# In[ ]:
 
 byIp404=data[data['code']==404].groupby('ip')
 byIp404['size'].mean()
 
 
-# In[36]:
+# In[ ]:
 
 #1. Simple describe function on data
 summary = data.describe()
